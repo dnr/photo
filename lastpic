@@ -1,0 +1,2 @@
+#!/bin/sh
+find ~/pics/ -name \*.RW2 -printf '%f   %t\n' | sort | tail -1

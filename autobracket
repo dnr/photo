@@ -1,0 +1,169 @@
+#!/usr/bin/python
+
+import sys, os, json, subprocess, commands, tempfile
+
+# Seconds of mtime to consider potential bracketed set
+THRESHOLD = 4
+
+# Use only 1, 3, 5 of five-exposure set
+SKIP_TWO_AND_FOUR = True
+
+# exif constant?
+AUTOBRACKET = 2
+
+
+def ExifTool(fns, keys):
+	keys = [('-' + key) for key in keys]
+	cmd = ['exiftool', '-j', '-n'] + keys + fns
+	data = subprocess.check_output(cmd, stderr=open('/dev/null', 'w'))
+	out = {}
+	for d in json.loads(data):
+		if 'SourceFile' in d:
+			out[d.pop('SourceFile')] = d
+	return out
+
+
+def CheckSet(fns):
+	if len(fns) < 2:
+		return False
+	for data in ExifTool(fns, ['ExposureMode']).values():
+		if data.get('ExposureMode') != AUTOBRACKET:
+			return False
+	return True
+
+
+def CheckDir():
+	files = [(fn, os.stat(fn).st_mtime) for fn in os.listdir('.')]
+	files.sort()
+
+	sets = []
+	prev_tm = 0
+	potential_set = []
+	for fn, tm in files:
+		if abs(tm - prev_tm) > THRESHOLD:
+			if CheckSet(potential_set):
+				sets.append(potential_set)
+			potential_set = []
+		potential_set.append(fn)
+		prev_tm = tm
+	if CheckSet(potential_set):
+		sets.append(potential_set)
+
+	return sets
+
+
+def MapStuff(func, stuff):
+	newstuff = []
+	for thing in stuff:
+		newthing = func(thing)
+		if newthing is None:
+			newthing = thing
+		newstuff.append(newthing)
+	return newstuff
+
+
+def MapLines(func, fn):
+	lines = open(fn).read().split('\n')
+	lines = MapStuff(func, lines)
+	open(fn, 'w').write('\n'.join(lines))
+
+
+def SetPtoOutputs(pto):
+	def Func(line):
+		if line.startswith('#hugin_outputLDRBlended'):
+					return '#hugin_outputLDRBlended false'
+		if line.startswith('#hugin_outputLDRExposureBlended'):
+					return '#hugin_outputLDRExposureBlended true'
+		if line.startswith('#hugin_outputHDRBlended'):
+					return '#hugin_outputHDRBlended true'
+	MapLines(Func, pto)
+
+
+def SetPtoExposures(pto, fns):
+	values = ExifTool(fns, ['LightValue'])
+	def Func(line):
+		words = line.split(' ')
+		if words and words[0] == 'i':
+			[name] = [word for word in words if word[0:2] == 'n"']
+			name = name[2:-1]
+			ev = values[name]['LightValue']
+			def ReplaceEv(word):
+				if word.startswith('Eev'):
+					return 'Eev' + repr(ev)
+			words = MapStuff(ReplaceEv, words)
+			return ' '.join(words)
+	MapLines(Func, pto)
+
+
+def SetPtoOptimizeEmor(pto):
+	def Func(line):
+		if line == 'v':
+			return 'v Ra0 Rb0 Rc0 Rd0 Re0\nv'
+	MapLines(Func, pto)
+
+
+def DoHdr(fns):
+	if SKIP_TWO_AND_FOUR and len(fns) == 5:
+		fns = [fns[0], fns[2], fns[4]]
+
+	base = os.path.splitext(fns[0])[0].lower()
+	pto = base + '.pto'
+	ptomk = pto + '.mk'
+	fused = base + '_fused.tif'
+	hdr = base + '_hdr.exr'
+	mantiuk = base + '_mantiuk.png'
+	fattal = base + '_fattal.png'
+	pfs = tempfile.TemporaryFile()
+
+	if not os.path.exists(pto):
+		# Align and output pto
+		cmd = ['align_image_stack', '-v', '-C', '-p', pto] + fns
+		subprocess.check_call(cmd)
+
+	if not os.path.exists(ptomk):
+		# Select fused and hdr outputs
+		SetPtoOutputs(pto)
+
+		# Copy correct exposure values from exif data
+		SetPtoExposures(pto, fns)
+
+		# Optimize response curve
+		SetPtoOptimizeEmor(pto)
+		cmd = ['vig_optimize', '-v', '-o', pto, pto]
+		subprocess.check_call(cmd)
+
+		# Produce makefile
+		cmd = ['pto2mk', '-o', ptomk, '-p', base, pto]
+		subprocess.check_call(cmd)
+
+	if not os.path.exists(fused) or not os.path.exists(hdr):
+		# Remap and merge to produce fused and hdr from pto
+		cmd = ['make', '-f', ptomk, 'all', 'clean']
+		subprocess.check_call(cmd)
+
+	if not os.path.exists(mantiuk) or not os.path.exists(fattal):
+		# Tonemapping
+		cmd = ['pfsin', hdr]
+		subprocess.check_call(cmd, stdout=pfs)
+
+		pfs.seek(0)
+		cmd = ('pfstmo_mantiuk06 -v --factor 0.1 --saturation 1.0 | '
+				'pfsgamma -g 2.2 | pfsout %s' % commands.mkarg(mantiuk))
+		subprocess.check_call(cmd, stdin=pfs, shell=True)
+
+		pfs.seek(0)
+		cmd = ('pfstmo_fattal02 -v --alpha 0.1 --beta 0.95 --saturation 1.0 '
+				'--noise 0.002 | pfsout %s' % commands.mkarg(fattal))
+		subprocess.check_call(cmd, stdin=pfs, shell=True)
+
+
+def main():
+	sets = CheckDir()
+	print 'Found %d sets:' % len(sets)
+	for s in sets:
+		print '%s...%s (%d)' % (s[0], s[-1], len(s))
+		DoHdr(s)
+
+
+if __name__ == '__main__':
+	main()
