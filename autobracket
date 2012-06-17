@@ -102,7 +102,7 @@ def SetPtoOptimizeEmor(pto):
 	MapLines(Func, pto)
 
 
-def DoHdr(fns):
+def DoHdr(fns, clean):
 	if SKIP_TWO_AND_FOUR and len(fns) == 5:
 		fns = [fns[0], fns[2], fns[4]]
 
@@ -113,6 +113,7 @@ def DoHdr(fns):
 	hdr = base + '_hdr.exr'
 	mantiuk = base + '_mantiuk.png'
 	fattal = base + '_fattal.png'
+	xcf = base + '_layers.xcf'
 	pfs = tempfile.TemporaryFile()
 
 	if not os.path.exists(pto):
@@ -155,14 +156,50 @@ def DoHdr(fns):
 		cmd = ('pfstmo_fattal02 -v --alpha 0.1 --beta 0.95 --saturation 1.0 '
 				'--noise 0.002 | pfsout %s' % commands.mkarg(fattal))
 		subprocess.check_call(cmd, stdin=pfs, shell=True)
+		pfs.close()
+
+	if not os.path.exists(xcf):
+		gimpscript = """
+(let* ((img (car (gimp-file-load
+                    RUN-NONINTERACTIVE "%(fused)s" "%(fused)s")))
+       (mantiuk (car (gimp-file-load-layer
+                        RUN-NONINTERACTIVE img "%(mantiuk)s")))
+       (fattal (car (gimp-file-load-layer
+                       RUN-NONINTERACTIVE img "%(fattal)s"))))
+
+ (gimp-drawable-set-name
+    (car (gimp-image-get-active-drawable img)) "fused")
+
+ (gimp-image-add-layer img mantiuk -1)
+ (gimp-drawable-set-name mantiuk "mantiuk")
+ (gimp-layer-set-mode mantiuk NORMAL-MODE)
+ (gimp-layer-set-opacity mantiuk 50.0)
+
+ (gimp-image-add-layer img fattal -1)
+ (gimp-drawable-set-name fattal "fattal")
+ (gimp-layer-set-mode fattal OVERLAY-MODE)
+ (gimp-layer-set-opacity fattal 50.0)
+
+ (gimp-xcf-save
+    0 img (car (gimp-image-get-active-drawable img)) "%(xcf)s" "%(xcf)s")
+
+ (gimp-quit 0))
+		""" % locals()
+		cmd = ['gimp', '--verbose', '-i', '-d', '-f', '-b', gimpscript]
+		subprocess.check_call(cmd)
+
+	if clean:
+		for fn in pto, ptomk, fused, hdr, mantiuk, fattal:
+			os.unlink(fn)
 
 
 def main():
+	clean = 'clean' in sys.argv
 	sets = CheckDir()
 	print 'Found %d sets:' % len(sets)
 	for s in sets:
 		print '%s...%s (%d)' % (s[0], s[-1], len(s))
-		DoHdr(s)
+		DoHdr(s, clean)
 
 
 if __name__ == '__main__':
