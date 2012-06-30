@@ -1,6 +1,10 @@
 #!/usr/bin/python
 
-import sys, os, json, subprocess, commands, tempfile
+# todo:
+# put results in exportpics
+# try with raw input
+
+import sys, os, json, subprocess, commands, tempfile, cStringIO
 
 # Seconds of mtime to consider potential bracketed set
 THRESHOLD = 4
@@ -33,7 +37,8 @@ def CheckSet(fns):
 
 
 def CheckDir():
-	files = [(fn, os.stat(fn).st_mtime) for fn in os.listdir('.')]
+	files = [(os.path.abspath(fn), os.stat(fn).st_mtime)
+	         for fn in os.listdir('.')]
 	files.sort()
 
 	sets = []
@@ -102,11 +107,7 @@ def SetPtoOptimizeEmor(pto):
 	MapLines(Func, pto)
 
 
-def DoHdr(fns, clean):
-	if SKIP_TWO_AND_FOUR and len(fns) == 5:
-		fns = [fns[0], fns[2], fns[4]]
-
-	base = os.path.splitext(fns[0])[0].lower()
+def Action(action, base, fns, *args):
 	pto = base + '.pto'
 	ptomk = pto + '.mk'
 	fused = base + '_fused.tif'
@@ -114,51 +115,68 @@ def DoHdr(fns, clean):
 	mantiuk = base + '_mantiuk.png'
 	fattal = base + '_fattal.png'
 	xcf = base + '_layers.xcf'
-	pfs = tempfile.TemporaryFile()
+	clean = base + '_clean'
 
-	if not os.path.exists(pto):
-		# Align and output pto
-		cmd = ['align_image_stack', '-v', '-C', '-p', pto] + fns
-		subprocess.check_call(cmd)
+	def Call(cmd, *args, **kwargs):
+		if isinstance(cmd, list):
+			print '+', ' '.join(cmd)
+		else:
+			print '+', cmd
+		return subprocess.check_call(cmd, *args, **kwargs)
 
-	if not os.path.exists(ptomk):
+	def DoAlign():
+		"""Align and output pto.
+		inputs: images
+		outputs: pto
+		"""
+		Call(['align_image_stack', '-v', '-C', '-p', pto] + fns)
+
+	def DoPto2Mk():
+		"""Produce makefile from pto and optimize response curve.
+		inputs: pto, images
+		outputs: ptomk
+		"""
 		# Select fused and hdr outputs
 		SetPtoOutputs(pto)
-
 		# Copy correct exposure values from exif data
 		SetPtoExposures(pto, fns)
-
 		# Optimize response curve
 		SetPtoOptimizeEmor(pto)
-		cmd = ['vig_optimize', '-v', '-o', pto, pto]
-		subprocess.check_call(cmd)
-
+		Call(['vig_optimize', '-v', '-o', pto, pto])
 		# Produce makefile
-		cmd = ['pto2mk', '-o', ptomk, '-p', base, pto]
-		subprocess.check_call(cmd)
+		Call(['pto2mk', '-o', ptomk, '-p', base, pto])
 
-	if not os.path.exists(fused) or not os.path.exists(hdr):
-		# Remap and merge to produce fused and hdr from pto
-		cmd = ['make', '-f', ptomk, 'all', 'clean']
-		subprocess.check_call(cmd)
+	def DoFusedAndHdr():
+		"""Remap and merge to produce fused and hdr from pto.
+		inputs: ptomk, images
+		outputs: fused, hdr
+		"""
+		Call(['make', '-f', ptomk, fused, hdr, 'clean'])
 
-	if not os.path.exists(mantiuk) or not os.path.exists(fattal):
-		# Tonemapping
-		cmd = ['pfsin', hdr]
-		subprocess.check_call(cmd, stdout=pfs)
+	def DoTonemap():
+		"""Tonemap.
+		inputs: hdr
+		outputs: fattal, mantiuk
+		"""
+		pfs = tempfile.TemporaryFile()
+		Call(['pfsin', hdr], stdout=pfs)
 
 		pfs.seek(0)
 		cmd = ('pfstmo_mantiuk06 -v --factor 0.1 --saturation 1.0 | '
 				'pfsgamma -g 2.2 | pfsout %s' % commands.mkarg(mantiuk))
-		subprocess.check_call(cmd, stdin=pfs, shell=True)
+		Call(cmd, stdin=pfs, shell=True)
 
 		pfs.seek(0)
 		cmd = ('pfstmo_fattal02 -v --alpha 0.1 --beta 0.95 --saturation 1.0 '
 				'--noise 0.002 | pfsout %s' % commands.mkarg(fattal))
-		subprocess.check_call(cmd, stdin=pfs, shell=True)
+		Call(cmd, stdin=pfs, shell=True)
 		pfs.close()
 
-	if not os.path.exists(xcf):
+	def DoXcf():
+		"""Combine fused and two tonemapped images into xcf layers.
+		inputs: fused, fattal, mantiuk
+		outputs: xcf
+		"""
 		gimpscript = """
 (let* ((img (car (gimp-file-load
                     RUN-NONINTERACTIVE "%(fused)s" "%(fused)s")))
@@ -184,23 +202,71 @@ def DoHdr(fns, clean):
     0 img (car (gimp-image-get-active-drawable img)) "%(xcf)s" "%(xcf)s")
 
  (gimp-quit 0))
-		""" % locals()
-		cmd = ['gimp', '--verbose', '-i', '-d', '-f', '-b', gimpscript]
-		subprocess.check_call(cmd)
+		""" % {'fused': fused, 'mantiuk': mantiuk, 'fattal': fattal,
+		       'xcf': xcf }
+		Call(['gimp', '--verbose', '-i', '-d', '-f', '-b', gimpscript])
 
-	if clean:
-		for fn in pto, ptomk, fused, hdr, mantiuk, fattal:
-			os.unlink(fn)
+	def DoGenerate(out, targets):
+		if SKIP_TWO_AND_FOUR and len(fns) == 5:
+			fns[:] = [fns[0], fns[2], fns[4]]
+		targets.append((xcf, clean))
+		out.write("""
+%(pto)s: %(images)s
+	$(ACTION) align %(base)s %(images)s
+
+%(ptomk)s: %(pto)s %(images)s
+	$(ACTION) pto2mk %(base)s %(images)s
+
+%(fused)s %(hdr)s: %(ptomk)s %(images)s
+	$(ACTION) fusedandhdr %(base)s %(images)s
+
+%(mantiuk)s %(fattal)s: %(hdr)s
+	$(ACTION) tonemap %(base)s %(images)s
+
+%(xcf)s: %(fused)s %(mantiuk)s %(fattal)s
+	$(ACTION) xcf %(base)s %(images)s
+
+%(clean)s:
+	-rm -f %(pto)s %(ptomk)s %(fused)s %(hdr)s %(mantiuk)s %(fattal)s
+		""" % {'base': base, 'pto': pto, 'ptomk': ptomk, 'fused': fused,
+		       'hdr': hdr, 'mantiuk': mantiuk, 'fattal': fattal, 'xcf': xcf,
+		       'clean': clean, 'images': ' '.join(fns)})
+
+	actionmap = {
+		'align': DoAlign,
+		'pto2mk': DoPto2Mk,
+		'fusedandhdr': DoFusedAndHdr,
+		'tonemap': DoTonemap,
+		'xcf': DoXcf,
+		'gen': DoGenerate,
+		}
+	actionmap[action](*args)
 
 
-def main():
-	clean = 'clean' in sys.argv
-	sets = CheckDir()
-	print 'Found %d sets:' % len(sets)
-	for s in sets:
-		print '%s...%s (%d)' % (s[0], s[-1], len(s))
-		DoHdr(s, clean)
+
+def main(argv):
+	if len(argv) > 1 and argv[1] == '--action':
+		Action(argv[2], argv[3], argv[4:])
+	else:
+		sets = CheckDir()
+		targets = []
+		out = cStringIO.StringIO()
+		print 'Found %d sets' % len(sets)
+		for fns in sets:
+			base = os.path.splitext(os.path.basename(fns[0]))[0].lower()
+			Action('gen', base, fns, out, targets)
+		all_xcf = ' '.join(xcf for (xcf, _) in targets)
+		all_clean = ' '.join(clean for (_, clean) in targets)
+		make = file('Makefile', 'w')
+		make.write('# auto-generated by autobracket\n\n')
+		make.write('ACTION = autobracket --action\n\n')
+		make.write('all: %s\n\n' % all_xcf)
+		make.write('clean: %s\n\n' % all_clean)
+		make.write('cleanall: clean\n\t-rm -f %s\n\n' % all_xcf)
+		out.reset()
+		make.write(out.read())
+		make.close()
 
 
 if __name__ == '__main__':
-	main()
+	main(sys.argv)
