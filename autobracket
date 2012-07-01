@@ -227,9 +227,10 @@ def Action(action, base, fns, *args):
 
 %(clean)s:
 	-rm -f %(pto)s %(ptomk)s %(fused)s %(hdr)s %(mantiuk)s %(fattal)s
-		""" % {'base': base, 'pto': pto, 'ptomk': ptomk, 'fused': fused,
-		       'hdr': hdr, 'mantiuk': mantiuk, 'fattal': fattal, 'xcf': xcf,
-		       'clean': clean, 'images': ' '.join(fns)})
+""" % {
+	'base': base, 'pto': pto, 'ptomk': ptomk, 'fused': fused,
+	'hdr': hdr, 'mantiuk': mantiuk, 'fattal': fattal, 'xcf': xcf,
+	'clean': clean, 'images': ' '.join(fns)})
 
 	actionmap = {
 		'align': DoAlign,
@@ -277,7 +278,8 @@ def main(argv):
 	else:
 		sets = CheckDir()
 		print 'Found %d sets' % len(sets)
-		GenMakefile(sets)
+		if sets:
+			GenMakefile(sets)
 
 
 
