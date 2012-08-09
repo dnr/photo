@@ -138,7 +138,7 @@ def Action(action, base, fns, *args):
 		inputs: images
 		outputs: more images
 		"""
-		Call(['dcraw', '-T', '-6', '-c'] + [base], stdout=open(fns[0], 'w'))
+		Call(['dcraw', '-T', '-4', '-c'] + [base], stdout=open(fns[0], 'w'))
 
 	def DoAlign():
 		"""Align and output pto.
