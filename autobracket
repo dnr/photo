@@ -15,6 +15,9 @@ SKIP_TWO_AND_FOUR = False
 AUTOBRACKET = 2
 MANUAL = 1
 
+# possible extensions for raw files
+RAW_EXTENSIONS = ['.rw2']
+
 
 def ExifTool(fns, keys):
 	keys = [('-' + key) for key in keys]
@@ -115,6 +118,7 @@ def QuoteForMakefile(fn):
 def Action(action, base, fns, *args):
 	pto = base + '.autopto'
 	ptomk = pto + '.mk'
+	conv_t = base + '_%d.tif'
 	fused = base + '_fused.tif'
 	hdr = base + '_hdr.exr'
 	mantiuk = base + '_mantiuk.png'
@@ -128,6 +132,13 @@ def Action(action, base, fns, *args):
 		else:
 			print '+', cmd
 		return subprocess.check_call(cmd, *args, **kwargs)
+
+	def DoDcraw():
+		"""Coverts raw to tiff.
+		inputs: images
+		outputs: more images
+		"""
+		Call(['dcraw', '-T', '-6', '-c'] + [base], stdout=open(fns[0], 'w'))
 
 	def DoAlign():
 		"""Align and output pto.
@@ -173,7 +184,7 @@ def Action(action, base, fns, *args):
 
 		pfs.seek(0)
 		cmd = ('pfstmo_fattal02 -v --alpha 0.1 --beta 0.95 --saturation 1.0 '
-				'--noise 0.002 | pfsout %s' % commands.mkarg(fattal))
+				'--noise 0.003 | pfsout %s' % commands.mkarg(fattal))
 		Call(cmd, stdin=pfs, shell=True)
 		pfs.close()
 
@@ -196,12 +207,12 @@ def Action(action, base, fns, *args):
  (gimp-image-add-layer img mantiuk -1)
  (gimp-drawable-set-name mantiuk "mantiuk")
  (gimp-layer-set-mode mantiuk NORMAL-MODE)
- (gimp-layer-set-opacity mantiuk 50.0)
+ (gimp-layer-set-opacity mantiuk 30.0)
 
  (gimp-image-add-layer img fattal -1)
  (gimp-drawable-set-name fattal "fattal")
  (gimp-layer-set-mode fattal OVERLAY-MODE)
- (gimp-layer-set-opacity fattal 50.0)
+ (gimp-layer-set-opacity fattal 30.0)
 
  (gimp-xcf-save
     0 img (car (gimp-image-get-active-drawable img)) "%(xcf)s" "%(xcf)s")
@@ -215,7 +226,18 @@ def Action(action, base, fns, *args):
 		if SKIP_TWO_AND_FOUR and len(fns) == 5:
 			fns[:] = [fns[0], fns[2], fns[4]]
 		targets.append((xcf, clean))
-		images = ' '.join('$(SRC)/' + QuoteForMakefile(fn) for fn in fns)
+
+		ext = os.path.splitext(os.path.basename(fns[0]))[1].lower()
+		if ext in RAW_EXTENSIONS:
+			for i, fn in enumerate(fns):
+				out.write("""
+%(conv)s: $(SRC)/%(fn)s
+	$(AB) dcraw $(SRC)/%(fn)s %(conv)s
+""" % {'fn': QuoteForMakefile(fn), 'conv': conv_t % i})
+			images = ' '.join(conv_t % i for i in range(len(fns)))
+		else:
+			images = ' '.join('$(SRC)/' + QuoteForMakefile(fn) for fn in fns)
+
 		out.write("""
 %(pto)s: %(images)s
 	$(AB) align %(base)s %(images)s
@@ -240,6 +262,7 @@ def Action(action, base, fns, *args):
 	'clean': clean, 'images': images})
 
 	actionmap = {
+		'dcraw': DoDcraw,
 		'align': DoAlign,
 		'pto2mk': DoPto2Mk,
 		'fusedandhdr': DoFusedAndHdr,
