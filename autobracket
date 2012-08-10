@@ -235,8 +235,10 @@ def Action(action, base, fns, *args):
 	$(AB) dcraw $(SRC)/%(fn)s %(conv)s
 """ % {'fn': QuoteForMakefile(fn), 'conv': conv_t % i})
 			images = ' '.join(conv_t % i for i in range(len(fns)))
+			convs = images
 		else:
 			images = ' '.join('$(SRC)/' + QuoteForMakefile(fn) for fn in fns)
+			convs = ''
 
 		out.write("""
 %(pto)s: %(images)s
@@ -255,11 +257,11 @@ def Action(action, base, fns, *args):
 	$(AB) xcf %(base)s %(images)s
 
 %(clean)s:
-	-rm -f %(pto)s %(ptomk)s %(fused)s %(hdr)s %(mantiuk)s %(fattal)s
+	-rm -f %(pto)s %(ptomk)s %(fused)s %(hdr)s %(mantiuk)s %(fattal)s %(convs)s
 """ % {
 	'base': base, 'pto': pto, 'ptomk': ptomk, 'fused': fused,
 	'hdr': hdr, 'mantiuk': mantiuk, 'fattal': fattal, 'xcf': xcf,
-	'clean': clean, 'images': images})
+	'convs': convs, 'clean': clean, 'images': images})
 
 	actionmap = {
 		'dcraw': DoDcraw,
