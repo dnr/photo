@@ -1,0 +1,7 @@
+#!/bin/bash
+
+convert "$1" \
+	+profile icc \
+	-profile ~/src/photo/icc/Panasonic\ DMC-G3.icc \
+	-profile /usr/share/color/icc/sRGB.icm \
+	"$2"

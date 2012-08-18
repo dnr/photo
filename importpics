@@ -1,0 +1,79 @@
+#!/usr/bin/python
+
+import sys, os, cPickle, time, shutil
+join = os.path.join
+
+SOURCE = '/mnt/sdb1'
+DEST = os.getenv('HOME') + '/newpics/incoming'
+STATE_FILE = '.importpics.state'
+
+
+class State(object):
+	def __init__(self):
+		self.copied = set()
+
+	@staticmethod
+	def _Key(fn, mtime):
+		return '%d:%s' % (int(mtime) - 1325376000, fn)
+
+	def Check(self, fn, mtime):
+		return self._Key(fn, mtime) in self.copied
+
+	def Add(self, fn, mtime):
+		self.copied.add(self._Key(fn, mtime))
+
+
+def LoadState(fn):
+	return cPickle.load(open(fn))
+
+def SaveState(fn, state):
+	tmpfn = fn + '.tmp'
+	with open(tmpfn, 'w') as tmpf:
+		cPickle.dump(state, tmpf, -1)
+	os.rename(tmpfn, fn)
+
+
+def ImportPics(source, dest):
+	dcim = join(source, 'DCIM')
+	statefn = join(dest, STATE_FILE)
+	try:
+		state = LoadState(statefn)
+	except:
+		state = State()
+
+	need_umount = False
+	if not os.path.exists(dcim):
+		os.system('mount ' + source)
+		need_umount = True
+
+	try:
+		tocopy = []
+		for dirpath, _, fns in os.walk(dcim):
+			for fn in fns:
+				path = join(dirpath, fn)
+				mtime = int(os.stat(path).st_mtime)
+				if not state.Check(fn, mtime):
+					tocopy.append((path, mtime))
+
+		for i, (path, mtime) in enumerate(tocopy):
+			ymd = time.strftime('%Y-%m-%d', time.localtime(mtime))
+			fn = os.path.basename(path)
+			destdir = join(dest, ymd)
+			if not os.path.isdir(destdir):
+				os.makedirs(destdir)
+			print '%s  (%d/%d)' % (fn, i+1, len(tocopy))
+			shutil.copy2(path, destdir)
+			state.Add(fn, mtime)
+
+	finally:
+		SaveState(statefn, state)
+		if need_umount:
+			os.system('umount ' + source)
+
+
+def main():
+	ImportPics(SOURCE, DEST)
+
+
+if __name__ == '__main__':
+	main()
