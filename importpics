@@ -4,7 +4,7 @@ import sys, os, cPickle, time, shutil
 join = os.path.join
 
 SOURCE = '/mnt/sdb1'
-DEST = os.getenv('HOME') + '/newpics/incoming'
+DEST = os.getenv('HOME') + '/pics/incoming'
 STATE_FILE = '.importpics.state'
 
 
