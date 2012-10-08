@@ -1,33 +1,68 @@
 #!/usr/bin/python
 
-import sys, os
+import sys, os, re
 from subprocess import check_call
+from math import pi, sin, cos, asin, atan2
 
 
-def Transform(lines, yaw_delta, pitch_delta):
+def d2r(d):
+	return d * pi / 180.0
+
+def r2d(r):
+	return r * 180.0 / pi
+
+
+def Mult(a, b):
+	rows_a = len(a)
+	cols_a = len(a[0])
+	cols_b = len(b[0])
+	c = [[0 for row in range(cols_b)] for col in range(rows_a)]
+	for i in range(rows_a):
+		for j in range(cols_b):
+			for k in range(cols_a):
+				c[i][j] += a[i][k]*b[k][j]
+	return c
+
+
+def RPY(r, p, y):
+	yawm = [[ cos(y), -sin(y), 0],
+			[ sin(y),  cos(y), 0],
+			[     0,       0,        1]]
+	pitm = [[ cos(p),      0,   sin(p)],
+			[      0,      1,        0],
+			[-sin(p),      0,  cos(p)]]
+	rolm = [[      1,      0,        0],
+			[      0,  cos(r), -sin(r)],
+			[      0,  sin(r),  cos(r)]]
+	return Mult(Mult(yawm, pitm), rolm)
+
+
+def Transform(lines, dr, dp, dy):
 	for line in lines:
-		if not line.startswith('i '):
+		m = re.match(r'i (.*) r(\S+) p(\S+) y(\S+) (.*)', line)
+		if not m:
 			yield line
 			continue
-		words = line.split(' ')
-		out = []
-		do_yaw = do_pitch = True
-		for word in words:
-			if word.startswith('y') and do_yaw:
-				out.append('y' + repr(float(word[1:]) + yaw_delta))
-				do_yaw = False
-			elif word.startswith('p') and do_pitch:
-				out.append('p' + repr(float(word[1:]) + pitch_delta))
-				do_pitch = False
-			else:
-				out.append(word)
-		yield ' '.join(out)
+
+		pre, r, p, y, post = m.groups()
+
+		r = d2r(float(r))
+		p = d2r(float(p))
+		y = d2r(float(y))
+
+		out = Mult(RPY(d2r(dr), d2r(dp), d2r(dy)), RPY(r, p, y))
+
+		r = atan2(out[2][1], out[2][2])
+		p = -asin(out[2][0])
+		y = atan2(out[1][0], out[0][0])
+
+		yield 'i %s r%r p%r y%r %s' % (pre, r2d(r), r2d(p), r2d(y), post)
 
 
-def Render(lines, out, yaw_delta, pitch_delta):
+def Render(lines, out, dy, dp):
 	newpto = 'tmp_cubic_%s.pto' % out
 	newptomk = newpto + '.mk'
-	lines = Transform(lines, yaw_delta, pitch_delta)
+	lines = Transform(lines, 0, dp, dy)
 	open(newpto, 'w').write(''.join(lines))
 
 	check_call(['pto2mk', '-o', newptomk, '-p', out, newpto])
