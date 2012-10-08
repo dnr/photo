@@ -2,7 +2,7 @@
 
 import sys, os, re
 from subprocess import check_call
-from math import pi, sin, cos, asin, atan2
+from math import pi, sin, cos, asin, atan2, log
 
 
 def d2r(d):
@@ -39,24 +39,34 @@ def RPY(r, p, y):
 
 def Transform(lines, dr, dp, dy):
 	for line in lines:
-		m = re.match(r'i (.*) r(\S+) p(\S+) y(\S+) (.*)', line)
-		if not m:
-			yield line
+		m = re.match(r'p f(\S+) w(\S+) h(\S+) v(\S+) (.*)', line)
+		if m:
+			f, w, h, v, post = m.groups()
+			w = int(w)
+			if w & (w-1):
+				w = 2 << int(log(w) / log(2))
+				print 'Width is not power of two. Rounding up to %d.' % w
+			yield 'p f0 w%d h%d v90 %s' % (w, w, post)
 			continue
 
-		pre, r, p, y, post = m.groups()
+		m = re.match(r'i (.*) r(\S+) p(\S+) y(\S+) (.*)', line)
+		if m:
+			pre, r, p, y, post = m.groups()
 
-		r = d2r(float(r))
-		p = d2r(float(p))
-		y = d2r(float(y))
+			r = d2r(float(r))
+			p = d2r(float(p))
+			y = d2r(float(y))
 
-		out = Mult(RPY(d2r(dr), d2r(dp), d2r(dy)), RPY(r, p, y))
+			out = Mult(RPY(d2r(dr), d2r(dp), d2r(dy)), RPY(r, p, y))
 
-		r = atan2(out[2][1], out[2][2])
-		p = -asin(out[2][0])
-		y = atan2(out[1][0], out[0][0])
+			r = atan2(out[2][1], out[2][2])
+			p = -asin(out[2][0])
+			y = atan2(out[1][0], out[0][0])
 
-		yield 'i %s r%r p%r y%r %s' % (pre, r2d(r), r2d(p), r2d(y), post)
+			yield 'i %s r%r p%r y%r %s' % (pre, r2d(r), r2d(p), r2d(y), post)
+			continue
+
+		yield line
 
 
 def Render(lines, out, dy, dp):
