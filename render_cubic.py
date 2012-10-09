@@ -10,9 +10,11 @@ def Transform(lines, func):
 		if m:
 			f, w, h, v, post = m.groups()
 			w = int(w)
-			if w & (w-1):
-				w = 2 << int(log(w) / log(2))
-				print 'Width is not power of two. Rounding up to %d.' % w
+			if w & 31:
+				w = (w + 31) & ~31
+				print 'Rounding size up to %d' % w
+			print 'Possible tile sizes: %d , %d , %d , etc.' % (
+					w/32, w/16, w/8)
 			yield 'p f0 w%d h%d v90 %s' % (w, w, post)
 			continue
 
@@ -38,7 +40,7 @@ def Render(lines, out, func):
 	os.unlink(newptomk)
 
 def Rot(dy):
-	return lambda r, p, y: r, p, y + dy
+	return lambda r, p, y: (r, p, y + dy)
 
 def UpDown(ud):
 	def func(r, p, y):
