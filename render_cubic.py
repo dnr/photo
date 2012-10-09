@@ -2,42 +2,9 @@
 
 import sys, os, re
 from subprocess import check_call
-from math import pi, sin, cos, asin, atan2, log
+from math import sin, cos, asin, atan2, log, degrees as r2d, radians as d2r
 
-
-def d2r(d):
-	return d * pi / 180.0
-
-def r2d(r):
-	return r * 180.0 / pi
-
-
-def Mult(a, b):
-	rows_a = len(a)
-	cols_a = len(a[0])
-	cols_b = len(b[0])
-	c = [[0 for row in range(cols_b)] for col in range(rows_a)]
-	for i in range(rows_a):
-		for j in range(cols_b):
-			for k in range(cols_a):
-				c[i][j] += a[i][k]*b[k][j]
-	return c
-
-
-def RPY(r, p, y):
-	yawm = [[ cos(y), -sin(y), 0],
-			[ sin(y),  cos(y), 0],
-			[     0,       0,        1]]
-	pitm = [[ cos(p),      0,   sin(p)],
-			[      0,      1,        0],
-			[-sin(p),      0,  cos(p)]]
-	rolm = [[      1,      0,        0],
-			[      0,  cos(r), -sin(r)],
-			[      0,  sin(r),  cos(r)]]
-	return Mult(Mult(yawm, pitm), rolm)
-
-
-def Transform(lines, dr, dp, dy):
+def Transform(lines, func):
 	for line in lines:
 		m = re.match(r'p f(\S+) w(\S+) h(\S+) v(\S+) (.*)', line)
 		if m:
@@ -52,27 +19,16 @@ def Transform(lines, dr, dp, dy):
 		m = re.match(r'i (.*) r(\S+) p(\S+) y(\S+) (.*)', line)
 		if m:
 			pre, r, p, y, post = m.groups()
-
-			r = d2r(float(r))
-			p = d2r(float(p))
-			y = d2r(float(y))
-
-			out = Mult(RPY(d2r(dr), d2r(dp), d2r(dy)), RPY(r, p, y))
-
-			r = atan2(out[2][1], out[2][2])
-			p = -asin(out[2][0])
-			y = atan2(out[1][0], out[0][0])
-
+			r, p, y = func(d2r(float(r)), d2r(float(p)), d2r(float(y)))
 			yield 'i %s r%r p%r y%r %s' % (pre, r2d(r), r2d(p), r2d(y), post)
 			continue
 
 		yield line
 
-
-def Render(lines, out, dy, dp):
+def Render(lines, out, func):
 	newpto = 'tmp_cubic_%s.pto' % out
 	newptomk = newpto + '.mk'
-	lines = Transform(lines, 0, dp, dy)
+	lines = Transform(lines, func)
 	open(newpto, 'w').write(''.join(lines))
 
 	check_call(['pto2mk', '-o', newptomk, '-p', out, newpto])
@@ -81,19 +37,29 @@ def Render(lines, out, dy, dp):
 	os.unlink(newpto)
 	os.unlink(newptomk)
 
+def Rot(dy):
+	return lambda r, p, y: r, p, y + dy
+
+def UpDown(ud):
+	def func(r, p, y):
+		r2 = atan2(cos(y) * sin(p) * sin(r) - ud * sin(y) * cos(r),
+		           cos(y) * sin(p) * cos(r) + ud * sin(y) * sin(r))
+		p2 = -asin(ud * cos(y) * cos(p))
+		y2 = atan2(sin(y) * cos(p), ud * sin(p))
+		return r2, p2, y2
+	return func
 
 def main():
 	pto = sys.argv[1]
 	base = os.path.basename(pto)[:-4]
 	lines = list(file(pto))
 
-	Render(lines, base + '_f',   0,   0)
-	Render(lines, base + '_l',  90,   0)
-	Render(lines, base + '_r', -90,   0)
-	Render(lines, base + '_u',   0, -90)
-	Render(lines, base + '_d',   0,  90)
-	Render(lines, base + '_b', 180,   0)
-
+	Render(lines, base + '_f', Rot(0))
+	Render(lines, base + '_l', Rot(90))
+	Render(lines, base + '_r', Rot(-90))
+	Render(lines, base + '_u', UpDown(1))
+	Render(lines, base + '_d', UpDown(-1))
+	Render(lines, base + '_b', Rot(180))
 
 if __name__ == '__main__':
 	main()
