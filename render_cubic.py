@@ -2,7 +2,7 @@
 
 import sys, os, re
 from subprocess import check_call
-from math import sin, cos, asin, atan2, log, degrees as r2d, radians as d2r
+from math import sin, cos, asin, atan2, log, pi, degrees as r2d, radians as d2r
 
 def Transform(lines, func):
 	for line in lines:
@@ -57,11 +57,11 @@ def main():
 	lines = list(file(pto))
 
 	Render(lines, base + '_f', Rot(0))
-	Render(lines, base + '_l', Rot(90))
-	Render(lines, base + '_r', Rot(-90))
+	Render(lines, base + '_l', Rot(pi/2))
+	Render(lines, base + '_r', Rot(-pi/2))
 	Render(lines, base + '_u', UpDown(1))
 	Render(lines, base + '_d', UpDown(-1))
-	Render(lines, base + '_b', Rot(180))
+	Render(lines, base + '_b', Rot(pi))
 
 if __name__ == '__main__':
 	main()
