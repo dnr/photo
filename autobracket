@@ -179,12 +179,12 @@ def Action(action, base, fns, *args):
 
 		pfs.seek(0)
 		cmd = ('pfstmo_mantiuk06 -v --factor 0.1 --saturation 1.0 | '
-				'pfsgamma -g 2.2 | pfsout %s' % commands.mkarg(mantiuk))
+				'pfsoutppm -s - | pnmtopng > %s' % commands.mkarg(mantiuk))
 		Call(cmd, stdin=pfs, shell=True)
 
 		pfs.seek(0)
 		cmd = ('pfstmo_fattal02 -v --alpha 0.1 --beta 0.95 --saturation 1.0 '
-				'--noise 0.003 | pfsout %s' % commands.mkarg(fattal))
+				'--noise 0.003 | pfsoutppm - | pnmtopng > %s' % commands.mkarg(fattal))
 		Call(cmd, stdin=pfs, shell=True)
 		pfs.close()
 
@@ -286,7 +286,7 @@ def GenMakefile(sets):
 
 	cwd = os.getcwd()
 	if '/pics/' in cwd:
-		md = cwd.replace('/pics/', '/exportpics/')
+		md = cwd.replace('/pics/', '/epics/')
 		md = md.replace('/autobracket', '')
 		md = md.lower()
 		if not os.path.isdir(md):
