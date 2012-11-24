@@ -1,0 +1,2 @@
+#!/bin/sh
+exec java -Xmx2800m -jar $HOME/inst/SaladoConverter-0.5/components/EquirectangularToCubic.jar "$@"
