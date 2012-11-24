@@ -1,0 +1,2 @@
+#!/bin/bash
+enfuse --hard-mask --contrast-weight=1 --saturation-weight=0 --exposure-weight=0 --entropy-weight=0 -v -o fused.tif "$@"
