@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 import sys, os, re
-from subprocess import check_call
+from subprocess import call, check_call
 from math import sin, cos, asin, atan2, log, pi, degrees as r2d, radians as d2r
 
 def Transform(lines, func):
@@ -15,6 +15,7 @@ def Transform(lines, func):
 				print 'Rounding size up to %d' % w
 			print 'Possible tile sizes: %d , %d , %d , etc.' % (
 					w/32, w/16, w/8)
+			post = re.sub(' S[0-9,]+ ', ' ', post)  # reset crop
 			yield 'p f0 w%d h%d v90 %s' % (w, w, post)
 			continue
 
@@ -34,10 +35,13 @@ def Render(lines, out, func):
 	open(newpto, 'w').write(''.join(lines))
 
 	check_call(['pto2mk', '-o', newptomk, '-p', out, newpto])
-	check_call(['make', '-f', newptomk, 'all', 'clean'])
+	ret = call(['make', '-f', newptomk, 'all', 'clean'])
 
-	os.unlink(newpto)
-	os.unlink(newptomk)
+	if ret == 0:
+		os.unlink(newpto)
+		os.unlink(newptomk)
+	else:
+		print 'Rendering %s failed' % out
 
 def Rot(dy):
 	return lambda r, p, y: (r, p, y + dy)
