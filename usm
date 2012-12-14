@@ -1,0 +1,30 @@
+#!/bin/bash
+
+in="$1"
+out="$(basename "$in" .tif).jpg"
+
+gimp --verbose -i -d -f -b "
+(let* ((img (car (gimp-file-load RUN-NONINTERACTIVE \"$in\" \"$in\")))
+       (drw (car (gimp-image-get-active-drawable img)))
+       (qual 0.85)
+       (smooth 0.0)
+       (optimize 1)
+       (progressive 0)
+       (comment \"\")
+       (subsmp 2)  ; 0=2x2 1x1 1x1, 1=2x1 1x1 1x1, 2=1x1 1x1 1x1, 3=1x2 1x1 1x1
+       (baseline 1)
+       (restart 0)
+       (dct 2)  ; 0=int slow, 1=int fast, 2=float
+       )
+
+  (plug-in-unsharp-mask RUN-NONINTERACTIVE img drw  84.1  0.01  0)
+  (plug-in-unsharp-mask RUN-NONINTERACTIVE img drw  41.3  0.01  0)
+  (plug-in-unsharp-mask RUN-NONINTERACTIVE img drw   5.1  0.07  3)
+  (plug-in-unsharp-mask RUN-NONINTERACTIVE img drw   1.1  0.08  4)
+  (plug-in-unsharp-mask RUN-NONINTERACTIVE img drw    .5  0.08  5)
+  (plug-in-unsharp-mask RUN-NONINTERACTIVE img drw    .2  0.07  6)
+
+  (file-jpeg-save RUN-NONINTERACTIVE img drw \"$out\" \"$out\" qual smooth optimize
+     progressive comment subsmp baseline restart dct)
+  (gimp-quit 0))
+"
