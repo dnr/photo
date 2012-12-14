@@ -48,8 +48,8 @@ def Rot(dy):
 
 def UpDown(ud):
 	def func(r, p, y):
-		r2 = atan2(cos(y) * sin(p) * sin(r) - ud * sin(y) * cos(r),
-		           cos(y) * sin(p) * cos(r) + ud * sin(y) * sin(r))
+		r2 = atan2(ud * (cos(y) * sin(p) * sin(r) - sin(y) * cos(r)),
+		           ud * (cos(y) * sin(p) * cos(r) + sin(y) * sin(r)))
 		p2 = -asin(ud * cos(y) * cos(p))
 		y2 = atan2(sin(y) * cos(p), ud * sin(p))
 		return r2, p2, y2
