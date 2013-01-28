@@ -1,10 +1,8 @@
 #!/bin/bash
-
-in="$1"
-out="$(basename "$in" .tif).jpg"
-
+for f; do
+out="$(basename "$f" .tif).jpg"
 gimp --verbose -i -d -f -b "
-(let* ((img (car (gimp-file-load RUN-NONINTERACTIVE \"$in\" \"$in\")))
+(let* ((img (car (gimp-file-load RUN-NONINTERACTIVE \"$f\" \"$f\")))
        (drw (car (gimp-image-get-active-drawable img)))
        (qual 0.85)
        (smooth 0.0)
@@ -28,3 +26,4 @@ gimp --verbose -i -d -f -b "
      progressive comment subsmp baseline restart dct)
   (gimp-quit 0))
 "
+done
