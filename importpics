@@ -1,45 +1,67 @@
 #!/usr/bin/python
 
-import sys, os, cPickle, time, shutil
+import sys, os, cPickle, time, shutil, re, getpass
+from gzip import open as gzopen
+from subprocess import check_output as co
 join = os.path.join
 
-SOURCE = '/mnt/sdc1'
 DEST = os.getenv('HOME') + '/pics/incoming'
-STATE_FILE = '.importpics.state'
+STATE_DIR = join(DEST, 'state')
 
+"""
+Format of state dir:
+	files:
+		name: <time>.state.gz where time is unix time in hex
+		format: gzipped. line-oriented.
+		each line is <mtime>:<filename> where mtime is unix time in hex.
+		metadata lines start with '#'
+	once written, files are not modified!
+	each import operation just drops a new file in the directory.
+"""
 
-class State(object):
-	def __init__(self):
-		self.copied = set()
+def find_sdcard():
+	for line in co(['dmesg', '-s', '4096', '-t']).splitlines():
+		m = re.match(r'^ (sd[bcdef]): \1[1]$', line)
+		if m: return '/dev/%s1' % m.group(1)
 
-	@staticmethod
-	def _Key(fn, mtime):
-		return '%d:%s' % (int(mtime) - 1325376000, fn)
+def find_mount_point(dev):
+	for line in open('/etc/fstab'):
+		fields = line.split()
+		if not fields: continue
+		if fields[0] != dev: continue
+		assert 'user' in fields[3], "fstab entry for %s doesn't include user" % fields[0]
+		return fields[1]
 
-	def Check(self, fn, mtime):
-		return self._Key(fn, mtime) in self.copied
+def _key(mtime, fn):
+	return '%08x:%s' % (mtime, fn)
 
-	def Add(self, fn, mtime):
-		self.copied.add(self._Key(fn, mtime))
+def load_state(state_dir):
+	state = set()
+	for fn in os.listdir(state_dir):
+		if not fn.endswith('.state.gz'): continue
+		for line in gzopen(join(state_dir, fn)):
+			line = line.strip()
+			if line.startswith('#'): continue
+			state.add(line.strip())
+	return state
 
+def append_state(state_dir, entries):
+	hostname = os.uname()[1]
+	fn = '%08x-%s-%x.state.gz' % (time.time(), hostname, os.getpid())
+	with gzopen(join(state_dir, fn), 'wb', compresslevel=6) as f:
+		print >>f, '# importpics run by %s on %s at %s' % (
+				getpass.getuser(), hostname, time.ctime())
+		for line in entries:
+			print >>f, line
 
-def LoadState(fn):
-	return cPickle.load(open(fn))
+def import_pics(source, dest, dry):
+	state_dir = join(dest, 'state')
+	if not os.path.isdir(state_dir):
+		os.makedirs(state_dir)
 
-def SaveState(fn, state):
-	tmpfn = fn + '.tmp'
-	with open(tmpfn, 'w') as tmpf:
-		cPickle.dump(state, tmpf, -1)
-	os.rename(tmpfn, fn)
+	state = load_state(state_dir)
 
-
-def ImportPics(source, dest):
 	dcim = join(source, 'DCIM')
-	statefn = join(dest, STATE_FILE)
-	try:
-		state = LoadState(statefn)
-	except:
-		state = State()
 
 	need_umount = False
 	if not os.path.exists(dcim):
@@ -48,31 +70,46 @@ def ImportPics(source, dest):
 
 	try:
 		tocopy = []
+		new_entries = []
 		for dirpath, _, fns in os.walk(dcim):
 			for fn in fns:
 				path = join(dirpath, fn)
 				mtime = int(os.stat(path).st_mtime)
-				if not state.Check(fn, mtime):
+				key = _key(mtime, fn)
+				if key not in state:
 					tocopy.append((path, mtime))
 
 		for i, (path, mtime) in enumerate(tocopy):
 			ymd = time.strftime('%Y-%m-%d', time.localtime(mtime))
 			fn = os.path.basename(path)
 			destdir = join(dest, ymd)
-			if not os.path.isdir(destdir):
+			if not os.path.isdir(destdir) and not dry:
 				os.makedirs(destdir)
-			print '%s  (%d/%d)' % (fn, i+1, len(tocopy))
-			shutil.copy2(path, destdir)
-			state.Add(fn, mtime)
+			print '%s  %s  (%d/%d)' % (fn, ymd, i+1, len(tocopy))
+			if not dry:
+				shutil.copy2(path, destdir)
+			new_entries.append(_key(mtime, fn))
 
 	finally:
-		SaveState(statefn, state)
+		if new_entries and not dry:
+			append_state(state_dir, new_entries)
 		if need_umount:
 			os.system('umount ' + source)
 
+	return bool(new_entries)
+
 
 def main():
-	ImportPics(SOURCE, DEST)
+	dry = '-n' in sys.argv
+
+	card = find_sdcard()
+	assert card, "No sdcard recently inserted?"
+	src = find_mount_point(card)
+	assert src, "No fstab entry for %s?" % card
+
+	have_new = import_pics(src, DEST, dry)
+	if have_new:
+		print "\n\nRun tier %s !\n" % DEST
 
 
 if __name__ == '__main__':
