@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-import sys, os, cPickle, time, shutil, re, getpass
+import sys, os, cPickle, time, shutil, re, getpass, fnmatch
 from gzip import open as gzopen
 from subprocess import check_output as co
 join = os.path.join
@@ -21,7 +21,7 @@ Format of state dir:
 
 def find_sdcard():
 	for line in co(['dmesg', '-s', '4096', '-t']).splitlines():
-		m = re.match(r'^ (sd[bcdef]): \1[1]$', line)
+		m = re.match(r'^ (sd[abcdef]): \1[1]$', line)
 		if m: return '/dev/%s1' % m.group(1)
 
 def find_mount_point(dev):
@@ -54,7 +54,7 @@ def append_state(state_dir, entries):
 		for line in entries:
 			print >>f, line
 
-def import_pics(source, dest, dry):
+def import_pics(source, dest, dry, filt):
 	state_dir = join(dest, 'state')
 	if not os.path.isdir(state_dir):
 		os.makedirs(state_dir)
@@ -77,7 +77,11 @@ def import_pics(source, dest, dry):
 				mtime = int(os.stat(path).st_mtime)
 				key = _key(mtime, fn)
 				if key not in state:
-					tocopy.append((path, mtime))
+					ymd = time.strftime('%Y-%m-%d', time.localtime(mtime))
+					if filt(ymd):
+						tocopy.append((path, mtime))
+					else:
+						print '%s  %s  -' % (fn, ymd)
 
 		for i, (path, mtime) in enumerate(tocopy):
 			ymd = time.strftime('%Y-%m-%d', time.localtime(mtime))
@@ -98,16 +102,26 @@ def import_pics(source, dest, dry):
 
 	return bool(new_entries)
 
+def make_filter(pats):
+	pats = list(pats)
+	def f(name):
+		if not pats:
+			return True
+		for pat in pats:
+			if fnmatch.fnmatch(name, pat):
+				return True
+	return f
 
 def main():
-	dry = '-n' in sys.argv
+	dry = '-n' in sys.argv[1:]
+	filt = make_filter(p for p in sys.argv[1:] if not p.startswith('-'))
 
 	card = find_sdcard()
 	assert card, "No sdcard recently inserted?"
 	src = find_mount_point(card)
 	assert src, "No fstab entry for %s?" % card
 
-	have_new = import_pics(src, DEST, dry)
+	have_new = import_pics(src, DEST, dry, filt)
 	if have_new:
 		print "\n\nRun tier %s !\n" % DEST
 
