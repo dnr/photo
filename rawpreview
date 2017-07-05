@@ -1,0 +1,12 @@
+#!/bin/bash
+args=()
+trap 'rm -rf "${args[@]}"' EXIT
+for f; do
+  case $f in
+    *.RW2) ;;
+    *) continue ;;
+  esac
+  dcraw -e "$f"
+  args+=(${f/%.RW2/.thumb.jpg})
+done
+eog "${args[@]}"
