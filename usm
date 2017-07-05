@@ -4,7 +4,7 @@ out="$(basename "$f" .tif).jpg"
 gimp --verbose -i -d -f -b "
 (let* ((img (car (gimp-file-load RUN-NONINTERACTIVE \"$f\" \"$f\")))
        (drw (car (gimp-image-get-active-drawable img)))
-       (qual 0.85)
+       (qual 0.90)
        (smooth 0.0)
        (optimize 1)
        (progressive 0)

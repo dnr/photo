@@ -20,7 +20,7 @@ Format of state dir:
 """
 
 def find_sdcard():
-	for line in co(['dmesg', '-s', '4096', '-t']).splitlines():
+	for line in co('dmesg -t | tail -20', shell=True).splitlines():
 		m = re.match(r'^ (sd[abcdef]): \1[1]$', line)
 		if m: return '/dev/%s1' % m.group(1)
 
