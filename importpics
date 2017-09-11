@@ -122,8 +122,12 @@ def main():
 	assert src, "No fstab entry for %s?" % card
 
 	have_new = import_pics(src, DEST, dry, filt)
-	if have_new:
-		print "\n\nRun tier %s !\n" % DEST
+	if True or have_new:
+		try:
+			raw_input("Sync state now (^C to cancel)")
+			os.system("tier -1g " + STATE_DIR)
+		except KeyboardInterrupt:
+			print "\naborted"
 
 
 if __name__ == '__main__':
