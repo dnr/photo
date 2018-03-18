@@ -7,6 +7,6 @@ for f; do
     *) continue ;;
   esac
   dcraw -e "$f"
-  args+=(${f/%.RW2/.thumb.jpg})
+  args+=("${f/%.RW2/.thumb.jpg}")
 done
 eog "${args[@]}"
