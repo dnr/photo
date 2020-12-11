@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 args=()
 trap 'rm -rf "${args[@]}"' EXIT
 for f; do
@@ -9,4 +9,4 @@ for f; do
   dcraw -e "$f"
   args+=("${f/%.RW2/.thumb.jpg}")
 done
-eog "${args[@]}"
+sxiv "${args[@]}"
