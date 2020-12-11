@@ -1,6 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
-import sys, os, cPickle, time, shutil, re, getpass, fnmatch
+import sys, os, pickle, time, shutil, re, getpass, fnmatch
 from gzip import open as gzopen
 from subprocess import check_output as co
 join = os.path.join
@@ -20,7 +20,7 @@ Format of state dir:
 """
 
 def find_sdcard():
-	for line in co('dmesg -t | tail -20', shell=True).splitlines():
+	for line in co('dmesg -t | tail -20', shell=True).decode().splitlines():
 		m = re.match(r'^ (sd[abcdef]): \1[1]$', line)
 		if m: return '/dev/%s1' % m.group(1)
 
@@ -40,19 +40,20 @@ def load_state(state_dir):
 	for fn in os.listdir(state_dir):
 		if not fn.endswith('.state.gz'): continue
 		for line in gzopen(join(state_dir, fn)):
-			line = line.strip()
+			line = line.decode().strip()
 			if line.startswith('#'): continue
 			state.add(line.strip())
 	return state
 
 def append_state(state_dir, entries):
 	hostname = os.uname()[1]
-	fn = '%08x-%s-%x.state.gz' % (time.time(), hostname, os.getpid())
+	fn = '%08x-%s-%x.state.gz' % (int(time.time()), hostname, os.getpid())
 	with gzopen(join(state_dir, fn), 'wb', compresslevel=6) as f:
-		print >>f, '# importpics run by %s on %s at %s' % (
+		msg = '# importpics run by %s on %s at %s\n' % (
 				getpass.getuser(), hostname, time.ctime())
+		f.write(msg.encode())
 		for line in entries:
-			print >>f, line
+			f.write((line+'\n').encode())
 
 def import_pics(source, dest, dry, filt):
 	state_dir = join(dest, 'state')
@@ -81,7 +82,7 @@ def import_pics(source, dest, dry, filt):
 					if filt(ymd):
 						tocopy.append((path, mtime))
 					else:
-						print '%s  %s  -' % (fn, ymd)
+						print('%s  %s  -' % (fn, ymd))
 
 		for i, (path, mtime) in enumerate(tocopy):
 			ymd = time.strftime('%Y-%m-%d', time.localtime(mtime))
@@ -89,9 +90,10 @@ def import_pics(source, dest, dry, filt):
 			destdir = join(dest, ymd)
 			if not os.path.isdir(destdir) and not dry:
 				os.makedirs(destdir)
-			print '%s  %s  (%d/%d)' % (fn, ymd, i+1, len(tocopy))
+			print('%s  %s  (%d/%d)' % (fn, ymd, i+1, len(tocopy)))
 			if not dry:
-				shutil.copy2(path, destdir)
+				#shutil.copy2(path, destdir)
+				pass
 			new_entries.append(_key(mtime, fn))
 
 	finally:
@@ -124,10 +126,10 @@ def main():
 	have_new = import_pics(src, DEST, dry, filt)
 	if True or have_new:
 		try:
-			raw_input("Sync state now (^C to cancel)")
+			input("Sync state now (^C to cancel)")
 			os.system("tier -1g " + STATE_DIR)
 		except KeyboardInterrupt:
-			print "\naborted"
+			print("\naborted")
 
 
 if __name__ == '__main__':
