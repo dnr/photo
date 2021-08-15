@@ -20,7 +20,7 @@ Format of state dir:
 """
 
 def find_sdcard():
-	for line in co('dmesg -t | tail -20', shell=True).decode().splitlines():
+	for line in co('dmesg -t | tail -20', shell=True, text=True).splitlines():
 		m = re.match(r'^ (sd[abcdef]): \1[1]$', line)
 		if m: return '/dev/%s1' % m.group(1)
 
@@ -39,21 +39,20 @@ def load_state(state_dir):
 	state = set()
 	for fn in os.listdir(state_dir):
 		if not fn.endswith('.state.gz'): continue
-		for line in gzopen(join(state_dir, fn)):
-			line = line.decode().strip()
+		for line in gzopen(join(state_dir, fn), 'rt'):
+			line = line.strip()
 			if line.startswith('#'): continue
-			state.add(line.strip())
+			state.add(line)
 	return state
 
 def append_state(state_dir, entries):
 	hostname = os.uname()[1]
 	fn = '%08x-%s-%x.state.gz' % (int(time.time()), hostname, os.getpid())
-	with gzopen(join(state_dir, fn), 'wb', compresslevel=6) as f:
-		msg = '# importpics run by %s on %s at %s\n' % (
-				getpass.getuser(), hostname, time.ctime())
-		f.write(msg.encode())
+	with gzopen(join(state_dir, fn), 'wt') as f:
+		print('# importpics run by %s on %s at %s' % (
+				getpass.getuser(), hostname, time.ctime()), file=f)
 		for line in entries:
-			f.write((line+'\n').encode())
+			print(line, file=f)
 
 def import_pics(source, dest, dry, filt):
 	state_dir = join(dest, 'state')
@@ -92,8 +91,7 @@ def import_pics(source, dest, dry, filt):
 				os.makedirs(destdir)
 			print('%s  %s  (%d/%d)' % (fn, ymd, i+1, len(tocopy)))
 			if not dry:
-				#shutil.copy2(path, destdir)
-				pass
+				shutil.copy2(path, destdir)
 			new_entries.append(_key(mtime, fn))
 
 	finally:
